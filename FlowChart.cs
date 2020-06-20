@@ -7,6 +7,11 @@ using System.Text;
 
 namespace MarkdownPlugin
 {
+
+    // A[] - Rectangle
+    // B() - Rounded Corner
+    // C (()) -- Circle
+    // D <> - Diamond
     class FlowChart
     {
     }
@@ -21,8 +26,8 @@ namespace MarkdownPlugin
             Bitmap b = new Bitmap(200, 200);
             var graphics = Graphics.FromImage(b);
             graphics.Clear(Color.White);
-            graphics.FillRectangle(Brushes.Black, new Rectangle(0, 0, 100, 100));
-            
+            //graphics.FillRectangle(Brushes.Black, new Rectangle(0, 0, 100, 100));
+            graphics.DrawEllipse(Pens.Red, 100, 100, 100, 50);
             b.Save(@"d:\tmp\a.png", ImageFormat.Png);
             graphics.Dispose();
             b.Dispose();
