@@ -9,9 +9,15 @@ namespace Kbg.NppPluginNET
 {
     public partial class frmMyDlg : Form
     {
+        public string filename { get; set; }
         public frmMyDlg()
         {
             InitializeComponent();
+            DialogResult dialogResult = saveFileDialog1.ShowDialog();
+            filename  = saveFileDialog1.FileName;
+            this.Load += (s, e) => this.Close();
         }
+
+     
     }
 }

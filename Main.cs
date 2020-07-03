@@ -18,7 +18,6 @@ namespace Kbg.NppPluginNET
         internal const string PluginName = "MarkdownPlugin";
         static string iniFilePath = null;
         static bool someSetting = false;
-        static frmMyDlg frmMyDlg = null;
         static int idMyDlg = -1;
         static Bitmap tbBmp = Properties.Resources.star;
         static Bitmap tbBmp_tbTab = Properties.Resources.star_bmp;
@@ -46,15 +45,37 @@ namespace Kbg.NppPluginNET
             someSetting = (Win32.GetPrivateProfileInt("SomeSection", "SomeKey", 0, iniFilePath) != 0);
 
             PluginBase.SetCommand(0, "Generate Table", myMenuFunction, new ShortcutKey(true, false, true, Keys.C));
-            PluginBase.SetCommand(0, "Generate Diagram", generateDiagram);
-            //PluginBase.SetCommand(1, "MyDockableDialog", myDockableDialog); 
+            PluginBase.SetCommand(0, "Generate Diagram to Clipoard", generateDiagram);
+            PluginBase.SetCommand(1, "Save DrawIO as File", saveAsDrawIO); 
             idMyDlg = 0;
         }
 
         private static void generateDiagram()
         {
-            DrawIOBuilder builder = new DrawIOBuilder();
-            builder.Build(new MarkdownPlugin.Rectangle(100, 100, 100, 100));
+
+            try
+            {
+                IntPtr currentScint = PluginBase.GetCurrentScintilla();
+                ScintillaGateway scintillaGateway = new ScintillaGateway(currentScint);
+                // Get selected text.
+                string selectedText = scintillaGateway.GetSelText();
+                var lines = selectedText.Split('\n');
+                DrawIOBuilder builder = new DrawIOBuilder();
+                for (var i = 0; i < lines.Length; i++)
+                {
+                    var line = lines[i];
+                    lines[i] = line.Trim(new char[] { ' ', '\r' });
+
+                }
+                DrawIOComponent[] drawIOComponent = builder.FlowchartBuilder(lines);
+                builder.CopyToClipBoard(drawIOComponent);
+
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(ex.Message);
+
+            }
         }
 
         internal static void SetToolBarIcon()
@@ -76,6 +97,8 @@ namespace Kbg.NppPluginNET
         internal static void myMenuFunction()
         {
 
+            
+
 
             IntPtr currentScint = PluginBase.GetCurrentScintilla();
             ScintillaGateway scintillaGateway = new ScintillaGateway(currentScint);
@@ -92,41 +115,34 @@ namespace Kbg.NppPluginNET
 
         }
 
-        internal static void myDockableDialog()
+        internal static void saveAsDrawIO()
         {
-            if (frmMyDlg == null)
+            try
             {
-                frmMyDlg = new frmMyDlg();
+                frmMyDlg frmMyDlg = new frmMyDlg();
+                var filename = frmMyDlg.filename;
 
-                using (Bitmap newBmp = new Bitmap(16, 16))
+                IntPtr currentScint = PluginBase.GetCurrentScintilla();
+                ScintillaGateway scintillaGateway = new ScintillaGateway(currentScint);
+                // Get selected text.
+                string selectedText = scintillaGateway.GetSelText();
+                var lines = selectedText.Split('\n'); for (var i = 0; i < lines.Length; i++)
                 {
-                    Graphics g = Graphics.FromImage(newBmp);
-                    ColorMap[] colorMap = new ColorMap[1];
-                    colorMap[0] = new ColorMap();
-                    colorMap[0].OldColor = Color.Fuchsia;
-                    colorMap[0].NewColor = Color.FromKnownColor(KnownColor.ButtonFace);
-                    ImageAttributes attr = new ImageAttributes();
-                    attr.SetRemapTable(colorMap);
-                    g.DrawImage(tbBmp_tbTab, new System.Drawing.Rectangle(0, 0, 16, 16), 0, 0, 16, 16, GraphicsUnit.Pixel, attr);
-                    tbIcon = Icon.FromHandle(newBmp.GetHicon());
+                    var line = lines[i];
+                    lines[i] = line.Trim(new char[] { ' ', '\r' });
+
                 }
-
-                NppTbData _nppTbData = new NppTbData();
-                _nppTbData.hClient = frmMyDlg.Handle;
-                _nppTbData.pszName = "My dockable dialog";
-                _nppTbData.dlgID = idMyDlg;
-                _nppTbData.uMask = NppTbMsg.DWS_DF_CONT_RIGHT | NppTbMsg.DWS_ICONTAB | NppTbMsg.DWS_ICONBAR;
-                _nppTbData.hIconTab = (uint)tbIcon.Handle;
-                _nppTbData.pszModuleName = PluginName;
-                IntPtr _ptrNppTbData = Marshal.AllocHGlobal(Marshal.SizeOf(_nppTbData));
-                Marshal.StructureToPtr(_nppTbData, _ptrNppTbData, false);
-
-                Win32.SendMessage(PluginBase.nppData._nppHandle, (uint) NppMsg.NPPM_DMMREGASDCKDLG, 0, _ptrNppTbData);
+                DrawIOBuilder builder = new DrawIOBuilder();
+                DrawIOComponent[] drawIOComponent = builder.FlowchartBuilder(lines);
+                builder.SaveToFile(filename, drawIOComponent);
             }
-            else
-            {
-                Win32.SendMessage(PluginBase.nppData._nppHandle, (uint) NppMsg.NPPM_DMMSHOW, 0, frmMyDlg.Handle);
+            catch (Exception ex) {
+                MessageBox.Show(ex.Message);
+
             }
+
+
+
         }
     }
 }
