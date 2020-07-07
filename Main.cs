@@ -47,7 +47,41 @@ namespace Kbg.NppPluginNET
             PluginBase.SetCommand(0, "Generate Table", myMenuFunction, new ShortcutKey(true, false, true, Keys.C));
             PluginBase.SetCommand(0, "Generate Diagram to Clipoard", generateDiagram);
             PluginBase.SetCommand(1, "Save DrawIO as File", saveAsDrawIO); 
+            PluginBase.SetCommand(2, "Copy as Image", copyAsImage, new ShortcutKey(true, true, false, Keys.C)); 
             idMyDlg = 0;
+        }
+
+        private static void copyAsImage()
+        {
+
+            try
+            {
+                IntPtr currentScint = PluginBase.GetCurrentScintilla();
+                ScintillaGateway scintillaGateway = new ScintillaGateway(currentScint);
+                // Get selected text.
+                string selectedText = scintillaGateway.GetSelText();
+                var lines = selectedText.Split('\n');
+                DrawIOBuilder builder = new DrawIOBuilder();
+                for (var i = 0; i < lines.Length; i++)
+                {
+                    var line = lines[i];
+                    lines[i] = line.Trim(new char[] { ' ', '\r' });
+
+                }
+
+                
+                DrawIOComponent[] drawIOComponent = builder.FlowchartBuilder(lines);
+                builder.DrawToClipBoard(drawIOComponent);
+
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(ex.Message);
+
+            }
+
+
+            
         }
 
         private static void generateDiagram()

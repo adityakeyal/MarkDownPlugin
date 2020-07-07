@@ -1,6 +1,10 @@
 ﻿using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Drawing;
+using System.Drawing.Drawing2D;
+using System.Drawing.Imaging;
+using System.Globalization;
 using System.IO;
 using System.Text.RegularExpressions;
 using System.Windows.Forms;
@@ -87,7 +91,7 @@ namespace MarkdownPlugin
                             ct = new RoundedRectangle(0, 0, 100, 50);
                             break;
                         case "OVAL":
-                            ct = new Circle(0, 0, 100);
+                            ct = new Circle(0, 0,100);
                             break;
                         case "DIAMOND":
                             ct = new Rectangle(0, 0, 100, 50);
@@ -143,7 +147,9 @@ namespace MarkdownPlugin
                     if (fromIdx >0 -1) {
                         //the text is blank
                         fromComponent=fromComponent.Substring(0, fromIdx);
-                        text = fromComponent.Substring(fromIdx + 2).Replace("\"","");
+                        var toIdx = line.IndexOf("-->");
+
+                        text = line.Substring(fromIdx + 2, toIdx - fromComponent.Length-2).Replace("\"","");
                     }
 
 
@@ -163,6 +169,29 @@ namespace MarkdownPlugin
 
         }
 
+
+        public void DrawToClipBoard(params DrawIOComponent[] components) {
+
+            Tuple<int, int> max = null;
+            foreach (DrawIOComponent comp in components) {
+                max = comp.DefineWidth(100, 0);
+            }
+
+            Bitmap bp = new Bitmap(max.Item1+5, max.Item2+5);
+            var graphics = Graphics.FromImage(bp);
+            graphics.Clear(Color.White);
+
+            foreach (DrawIOComponent comp in components) {
+                comp.Diagram(graphics);
+            }
+
+            Clipboard.SetImage(bp);
+
+            bp.Save(@"d:\tmp\a.png", ImageFormat.Png);
+            graphics.Dispose();
+            bp.Dispose();
+
+        }
         public void CopyToClipBoard(params DrawIOComponent[] components) {
 
             var htmlDocument = PrepareEncodedHtml(components);
@@ -221,6 +250,7 @@ namespace MarkdownPlugin
         private int y;
         private int h;
         private int w;
+       
 
         protected DrawIOComponent(int x, int y, int w, int h)
         {
@@ -231,7 +261,7 @@ namespace MarkdownPlugin
         }
 
         private string text = "";
-        private string fillColor = "#ffffff";
+        private string fillColor = null;
         private string strokeColor = "#000000";
 
         private ArrayList style = new ArrayList();
@@ -239,11 +269,217 @@ namespace MarkdownPlugin
 
 
         private List<DrawIOComponentLink> destinationComponent = new List<DrawIOComponentLink> ();
+        private List<DrawIOComponent> parents = new List<DrawIOComponent>();
         public static bool LR = false;
         private readonly int deltaXArrow = 50;
         private readonly int deltaYArrow = 50;
 
         private bool generated = false;
+
+
+        /**
+         * The purpose of this method is to define the location where the elements will appear on the map.
+         * The logic is based on the below:
+         * The lowest value will be the value of the element in the left most branch of the tree
+         */
+
+
+
+
+        public Tuple<int,int> DefineWidth(int x , int y)
+        {
+
+            if (!LR)
+            {
+
+                this.x = x;
+                this.y = y;
+
+
+                var endingPoint = new Tuple<int, int>(x, y);
+
+                int deltaX = 0;
+                foreach (var dc in destinationComponent)
+                {
+                    endingPoint = dc.Destination.DefineWidth(endingPoint.Item1 + deltaX, this.y + this.h + 50);
+                    deltaX = 50;
+                    
+                }
+
+                int xDelta = 0;
+                if (destinationComponent.Count == 0)
+                {
+                    xDelta = this.w;
+                }
+
+                return new Tuple<int, int>(endingPoint.Item1 + xDelta, endingPoint.Item2 + this.h);
+            }
+
+
+            this.x = x;
+            this.y = y;
+
+
+            var endingPoint1 = new Tuple<int, int>(x, y);
+
+            int count1 = 0;
+            foreach (var dc in destinationComponent)
+            {
+                endingPoint1 = dc.Destination.DefineWidth(endingPoint1.Item1 + 50 , this.y + this.h + 50 * count1);
+                count1++;
+            }
+
+            int yDelta = 0;
+            if (destinationComponent.Count == 0)
+            {
+                yDelta  = this.h;
+            }
+
+            return new Tuple<int, int>(endingPoint1.Item1 + this.w, endingPoint1.Item2 + yDelta);
+        }
+
+        
+
+        public void Diagram(Graphics gd) {
+            if (!generated) {
+
+                using(Brush b = new SolidBrush(HexToColor(this.fillColor)))
+                using (Font drawFont = new Font("Arial", 8))
+                using (SolidBrush drawBrush = new SolidBrush(Color.Black))
+                using (StringFormat drawFormat = new StringFormat())
+                {
+
+                    System.Drawing.Rectangle r = new System.Drawing.Rectangle(x, y, w, h);
+                    populateGraphic(gd, b, r);
+
+                    drawFormat.FormatFlags = StringFormatFlags.DirectionVertical;
+                    SizeF sizeF = gd.MeasureString(this.text, drawFont);
+
+                    gd.DrawString(this.text, drawFont, drawBrush, this.x + (this.w - sizeF.Width) / 2, this.y + (this.h - sizeF.Height) / 2);
+
+                }
+
+                // 
+            }
+            //
+
+            /*var count = 0;*/
+            var exitX = LR ? 1 : 0.5;
+            var exitY = LR ? 0.5 : 1;
+            var enterX = LR ? 0 : 0.5;
+            var enterY = LR ? 0.5 : 0;
+
+
+            //TODO Draw a link
+
+            using (Font drawFont = new Font("Arial", 8))
+            using (SolidBrush drawBrush = new SolidBrush(Color.Black))
+            using (SolidBrush fillBrush = new SolidBrush(Color.White))
+            using (StringFormat drawFormat = new StringFormat())
+            using (Pen p = new Pen(Color.Black))
+            {
+                List<Holder> l = new List<Holder>();
+                foreach (var dc in destinationComponent)
+              {
+
+                dc.Destination.Diagram(gd);
+
+               
+                    
+
+                    // if x points match
+                    int pointExitX = (int)(this.x + this.w * exitX);
+                    int pointEnterX = (int)(dc.Destination.x + dc.Destination.w * enterX);
+                    int pointExitY = (int)(this.y + this.h * exitY);
+                    int pointEnterY = (int)(dc.Destination.y + dc.Destination.h * enterY);
+
+                    bool xMatch =  pointExitX == pointEnterX;
+                    bool yMatch = pointExitY == pointEnterY;
+
+                    if (xMatch || yMatch)
+                    {
+                        p.CustomEndCap = new AdjustableArrowCap(5, 5);
+                        gd.DrawLine(p, new Point(pointExitX, pointExitY), new Point(pointEnterX, pointEnterY));
+
+                        //Fill Text
+                        if (dc.Text != null)
+                        {
+
+
+                            var h = new Holder(gd, dc, drawFont, drawBrush, fillBrush, drawFormat, pointEnterX, pointExitY, pointEnterY);
+                            l.Add(h);
+
+
+                           /* drawFormat.FormatFlags = StringFormatFlags.DirectionVertical;
+                            SizeF sizeF = gd.MeasureString(dc.Text, drawFont);
+                            gd.FillRectangle(fillBrush, (float)((this.x + this.w * exitX + dc.Destination.x + dc.Destination.w * enterX) / 2) - sizeF.Width / 2, (float)((this.y + this.h * exitY + (dc.Destination.y + dc.Destination.h * enterY)) / 2) - sizeF.Height / 2, sizeF.Width, sizeF.Height);
+*/
+                           /* gd.DrawString(dc.Text, drawFont, drawBrush, (float)((this.x + this.w * exitX + dc.Destination.x + dc.Destination.w * enterX) / 2) - sizeF.Width / 2, (float)((this.y + this.h * exitY + (dc.Destination.y + dc.Destination.h * enterY)) / 2) - sizeF.Height / 2);*/
+                        }
+
+                    }
+                    else {
+                        p.CustomEndCap = new AdjustableArrowCap(0,0);
+                        // build a patch
+                        if (Math.Abs(pointEnterX - pointExitX) > Math.Abs(pointEnterY - pointExitY)) {
+
+                            // draw 3 lines 
+
+                            // exitPoint to point 1
+                            // point 1 to point 2
+                            // point 2 to enter
+
+
+                            gd.DrawLine(p, new Point(pointExitX, pointExitY), new Point(pointExitX, pointExitY + (pointEnterY -pointExitY) / 2));
+                            gd.DrawLine(p, new Point(pointExitX, pointExitY + (pointEnterY - pointExitY) / 2) , new Point(pointEnterX, pointExitY + (pointEnterY - pointExitY) / 2));
+                            p.CustomEndCap = new AdjustableArrowCap(5, 5);
+                            gd.DrawLine(p, new Point(pointEnterX, pointExitY + (pointEnterY - pointExitY) / 2), new Point(pointEnterX, pointEnterY));
+
+                            //Fill Text
+                            if (dc.Text != null)
+                            {
+                                var h= new Holder(gd, dc, drawFont, drawBrush, fillBrush, drawFormat, pointEnterX, pointExitY, pointEnterY);
+                                l.Add(h);
+                                
+                            }
+
+                        }
+
+
+                    }
+
+
+                   
+                    
+
+                }
+
+
+
+
+
+                //WooHoo
+                foreach (Holder h in l)
+                {
+                    DrawString(h);
+                }
+
+            }
+
+
+            //
+
+        }
+
+        private static void DrawString(Holder h) {
+
+            h.drawFormat.FormatFlags = StringFormatFlags.DirectionVertical;
+            SizeF sizeF = h.gd.MeasureString(h.dc.Text, h.drawFont);
+            h.gd.FillRectangle(h.fillBrush, h.pointEnterX - sizeF.Width / 2, h.pointExitY + (h.pointEnterY - h.pointExitY) / 2 - sizeF.Height / 2, sizeF.Width, sizeF.Height);
+            h.gd.DrawString(h.dc.Text, h.drawFont, h.drawBrush, h.pointEnterX - sizeF.Width / 2, h.pointExitY + (h.pointEnterY - h.pointExitY) / 2 - sizeF.Height / 2);
+        }
+
+        protected abstract void populateGraphic(Graphics gd, Brush b, System.Drawing.Rectangle r);
 
         public XElement[] Generate()
         {
@@ -351,15 +587,65 @@ namespace MarkdownPlugin
 
         protected virtual string fetchStyle()
         {
-            
-            
-            return $"whiteSpace=wrap;html=1;aspect=fixed;fillColor={this.fillColor};strokeColor={this.strokeColor};{string.Join(";",this.style.ToArray()).Trim()};";
-
+            var fillColor = this.fillColor == null ? "#ffffff" : this.fillColor; 
+            return $"whiteSpace=wrap;html=1;aspect=fixed;fillColor={fillColor};strokeColor={this.strokeColor};{string.Join(";",this.style.ToArray()).Trim()};";
         }
 
         internal void To(DrawIOComponent tc,string text)
         {
             destinationComponent.Add(new DrawIOComponentLink(tc, text));
+            tc.From(this);
+        }
+
+        private void From(DrawIOComponent parentNode)
+        {
+            parents.Add(parentNode);
+            
+        }
+
+        public static Color HexToColor(string hexString)
+        {
+            hexString = hexString == null ? "#000000" : hexString;
+            hexString = hexString.Trim();
+            //replace # occurences
+            if (hexString.IndexOf('#') != -1)
+                hexString = hexString.Replace("#", "");
+
+            int r, g, b;
+            Console.WriteLine(hexString);
+
+            r = int.Parse(hexString.Substring(0, 2), NumberStyles.AllowHexSpecifier);
+            g = int.Parse(hexString.Substring(2, 2), NumberStyles.AllowHexSpecifier);
+            b = int.Parse(hexString.Substring(4, 2), NumberStyles.AllowHexSpecifier);
+
+            return Color.FromArgb(r, g, b);
+        }
+
+    }
+
+    internal class Holder
+    {
+        internal Graphics gd;
+        internal DrawIOComponentLink dc;
+        internal Font drawFont;
+        internal SolidBrush drawBrush;
+        internal SolidBrush fillBrush;
+        internal StringFormat drawFormat;
+        internal int pointEnterX;
+        internal int pointExitY;
+        internal int pointEnterY;
+
+        public Holder(Graphics gd, DrawIOComponentLink dc, Font drawFont, SolidBrush drawBrush, SolidBrush fillBrush, StringFormat drawFormat, int pointEnterX, int pointExitY, int pointEnterY)
+        {
+            this.gd = gd;
+            this.dc = dc;
+            this.drawFont = drawFont;
+            this.drawBrush = drawBrush;
+            this.fillBrush = fillBrush;
+            this.drawFormat = drawFormat;
+            this.pointEnterX = pointEnterX;
+            this.pointExitY = pointExitY;
+            this.pointEnterY = pointEnterY;
         }
     }
 
@@ -370,7 +656,15 @@ namespace MarkdownPlugin
 
         }
 
+        protected override void populateGraphic(Graphics gd, Brush b, System.Drawing.Rectangle r)
+        {
 
+            using (Pen p = new Pen(b, 1))
+            {
+                gd.DrawRectangle(p, r);
+            }
+
+        }
     }
 
     public class Circle : DrawIOComponent
@@ -388,6 +682,14 @@ namespace MarkdownPlugin
 
         }
 
+        protected override void populateGraphic(Graphics gd, Brush b, System.Drawing.Rectangle r)
+        {
+            using(Pen p = new Pen(Color.Black, 1)){
+                gd.DrawEllipse(p, r);
+            }
+
+
+        }
     }
 
     public class RoundedRectangle : DrawIOComponent
@@ -400,6 +702,19 @@ namespace MarkdownPlugin
         {
             var style = base.fetchStyle();
             return $"{style};rounded=1;";
+        }
+
+        protected override void populateGraphic(Graphics gd, Brush b, System.Drawing.Rectangle r)
+        {
+            using (Pen p = new Pen(Color.Black, 1))
+            {
+                gd.DrawLine(p, r.X,r.Y,r.X+r.Width,r.Y);
+                gd.DrawLine(p, r.X, r.Y+r.Height, r.X + r.Width, r.Y + r.Height);
+                gd.DrawArc(p, r.X-r.Height/2, r.Y , r.Height, r.Height, 90, 180);
+                gd.DrawArc(p, r.X+r.Width - r.Height/ 2, r.Y , r.Height, r.Height, 270, 180);
+
+            }
+
         }
     }
 
@@ -420,6 +735,17 @@ namespace MarkdownPlugin
             String imageTxt = Convert.ToBase64String(bytes);
             return $"{style};aspect=fixed;imageAspect=0;image=data:image/png,{imageTxt};";
         }
+
+
     }
+
+    public class XYHolder {
+
+        public static int X;
+        public static int Y;
+
+    }
+
+  
 
 }
